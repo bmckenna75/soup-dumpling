@@ -7,6 +7,8 @@ from database import QuoteDatabase
 
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+VERSION = (1, 0, 0)
+
 
 class QuoteBot(telepot.Bot):
     commands = ['random', 'author', 'search', 'addquote']
