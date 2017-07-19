@@ -1,0 +1,12 @@
+# Database files
+*.db
+
+# Compiled files
+*.py[cod]
+
+# API tokens
+tokens/
+
+# Utilities
+activate.bat
+sqlite3.exe
