@@ -98,15 +98,17 @@ class QuoteDatabase:
                 ORDER BY RANDOM() LIMIT 1;"""
             self.c.execute(select, (chat_id,))
         else:
+            name = name.lstrip('@')
             select = """SELECT
                 quote.id, chat_id, message_id, sent_at, sent_by, content,
                 user.first_name || " " || user.last_name AS full_name
                 FROM quote INNER JOIN user
                 ON quote.sent_by = user.id
                 AND quote.chat_id = ?
-                AND full_name LIKE ?
+                AND (full_name LIKE ? OR username LIKE ?)
                 ORDER BY RANDOM() LIMIT 1;"""
-            self.c.execute(select, (chat_id, '%' + name + '%',))
+            self.c.execute(select,
+                (chat_id, '%' + name + '%', '%' + name + '%'))
 
         row = self.c.fetchone()
         if row is None:
