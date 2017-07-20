@@ -2,7 +2,8 @@ from collections import namedtuple
 
 
 class User:
-    def __init__(self, id_, first_name, last_name='', username=''):
+    def __init__(self, id_, first_name, last_name='', username='',
+            language_code=''):
         self.id = id_
         self.first_name = first_name
         self.last_name = last_name
