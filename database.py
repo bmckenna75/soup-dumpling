@@ -77,13 +77,26 @@ class QuoteDatabase:
 
     # Quote methods
 
-    def get_quote_count(self, chat_id):
+    def get_quote_count(self, chat_id, search=None):
         """Returns the number of quotes added in the given chat."""
         self.connect()
 
-        select = """SELECT COUNT(*) FROM quote
-            WHERE quote.chat_id = ?"""
-        self.c.execute(select, (chat_id,))
+        if search is None:
+            select = """SELECT COUNT(*) FROM quote
+                WHERE quote.chat_id = ?"""
+            self.c.execute(select, (chat_id,))
+        else:
+            select = """SELECT COUNT(DISTINCT quote.id),
+                user.first_name || " " || user.last_name AS full_name
+                FROM quote INNER JOIN user
+                ON quote.sent_by = user.id
+                AND quote.chat_id = ?
+                AND (quote.content LIKE ?
+                    OR full_name LIKE ?
+                    OR user.username LIKE ?)"""
+            search = '%' + search + '%'
+            self.c.execute(select,
+                (chat_id, search, search, search))
 
         return self.c.fetchone()[0]
 

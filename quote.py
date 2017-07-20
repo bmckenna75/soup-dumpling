@@ -67,9 +67,15 @@ class QuoteBot(telepot.Bot):
                 self._send_quote(chat_id, response, result.quote.id)
 
         elif command == 'quotes':
-            count = self.database.get_quote_count(chat_id)
-            response = "{0} quotes for this chat".format(count)
-            self.sendMessage(chat_id, response)
+            if not args:
+                count = self.database.get_quote_count(chat_id)
+                response = "{0} quotes in this chat".format(count)
+            else:
+                count = self.database.get_quote_count(chat_id, search=args)
+                response = ('{0} quotes in this chat '
+                    'for search term "{1}"').format(count, args)
+
+            self.sendMessage(chat_id, response, reply_to_message_id=message_id)
 
         elif command == 'author':
             if not args:
