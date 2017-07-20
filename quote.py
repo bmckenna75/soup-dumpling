@@ -11,7 +11,7 @@ VERSION = (1, 0, 0)
 
 
 class QuoteBot(telepot.Bot):
-    commands = ['random', 'author', 'search', 'addquote']
+    commands = ['random', 'quotes', 'author', 'search', 'addquote']
 
     def __init__(self, token):
         super(QuoteBot, self).__init__(token)
@@ -65,6 +65,11 @@ class QuoteBot(telepot.Bot):
             else:
                 response = self._format_quote(*result)
                 self._send_quote(chat_id, response, result.quote.id)
+
+        elif command == 'quotes':
+            count = self.database.get_quote_count(chat_id)
+            response = "{0} quotes for this chat".format(count)
+            self.sendMessage(chat_id, response)
 
         elif command == 'author':
             if not args:

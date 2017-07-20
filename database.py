@@ -77,6 +77,16 @@ class QuoteDatabase:
 
     # Quote methods
 
+    def get_quote_count(self, chat_id):
+        """Returns the number of quotes added in the given chat."""
+        self.connect()
+
+        select = """SELECT COUNT(*) FROM quote
+            WHERE quote.chat_id = ?"""
+        self.c.execute(select, (chat_id,))
+
+        return self.c.fetchone()[0]
+
     def get_random_quote(self, chat_id, name=None):
         """Returns a random quote, and the user who wrote the quote."""
         self.connect()
