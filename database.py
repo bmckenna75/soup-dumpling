@@ -75,6 +75,41 @@ class QuoteDatabase:
 
         self.db.commit()
 
+    # User ranking methods
+
+    def get_most_quoted(self, chat_id, limit=5):
+        """Returns the names of the users who have the most quotes attributed
+        to them."""
+        self.connect()
+
+        select = """SELECT COUNT(*) AS count,
+            user.first_name || " " || user.last_name
+            FROM quote INNER JOIN user
+            ON quote.sent_by = user.id
+            AND quote.chat_id = ?
+            GROUP BY quote.sent_by
+            ORDER BY count DESC
+            LIMIT ?"""
+        self.c.execute(select, (chat_id, limit))
+
+        return self.c.fetchall()
+
+    def get_most_quotes_added(self, chat_id, limit=5):
+        """Returns the names of the users who have added the most quotes."""
+        self.connect()
+
+        select = """SELECT COUNT(*) AS count,
+            user.first_name || " " || user.last_name
+            FROM quote INNER JOIN user
+            ON quote.quoted_by = user.id
+            AND quote.chat_id = ?
+            GROUP BY quote.quoted_by
+            ORDER BY count DESC
+            LIMIT ?"""
+        self.c.execute(select, (chat_id, limit))
+
+        return self.c.fetchall()
+
     # Quote methods
 
     def get_quote_count(self, chat_id, search=None):
@@ -99,6 +134,19 @@ class QuoteDatabase:
                 (chat_id, search, search, search))
 
         return self.c.fetchone()[0]
+
+    def get_first_quote(self, chat_id):
+        """Returns the first quote added in the given chat."""
+        self.connect()
+
+        select = """SELECT * FROM quote
+            WHERE chat_id = ?
+            ORDER BY sent_at ASC
+            LIMIT 1"""
+        self.c.execute(select, (chat_id,))
+
+        row = self.c.fetchone()
+        return Quote.from_database(row)
 
     def get_random_quote(self, chat_id, name=None):
         """Returns a random quote, and the user who wrote the quote."""

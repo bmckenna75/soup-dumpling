@@ -11,7 +11,7 @@ VERSION = (1, 0, 0)
 
 
 class QuoteBot(telepot.Bot):
-    commands = ['random', 'quotes', 'author', 'search', 'addquote']
+    commands = ['random', 'quotes', 'stats', 'author', 'search', 'addquote']
 
     def __init__(self, token):
         super(QuoteBot, self).__init__(token)
@@ -76,6 +76,36 @@ class QuoteBot(telepot.Bot):
                     'for search term "{1}"').format(count, args)
 
             self.sendMessage(chat_id, response, reply_to_message_id=message_id)
+
+        elif command == 'stats':
+            # Overall
+            total_count = self.database.get_quote_count(chat_id)
+            first_quote_dt = self.database.get_first_quote(chat_id).sent_at
+
+            response = list()
+
+            response.append("<b>Total quote count</b>")
+            response.append("• {0} quotes since {1}".format(total_count,
+                datetime.fromtimestamp(first_quote_dt).strftime(TIME_FORMAT)))
+            response.append("")
+
+            # Users
+            most_quoted = self.database.get_most_quoted(chat_id, limit=5)
+
+            response.append("<b>Users with the most quotes</b>")
+            for count, name in most_quoted:
+                response.append("• {0} ({1:.1%}): {2}".format(
+                    count, count / total_count, name))
+            response.append("")
+
+            added_most = self.database.get_most_quotes_added(chat_id, limit=5)
+
+            response.append("<b>Users who add the most quotes</b>")
+            for count, name in added_most:
+                response.append("• {0} ({1:.1%}): {2}".format(
+                    count, count / total_count, name))
+
+            self.sendMessage(chat_id, '\n'.join(response), parse_mode='HTML')
 
         elif command == 'author':
             if not args:
