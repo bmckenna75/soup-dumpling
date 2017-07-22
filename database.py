@@ -4,6 +4,14 @@ import sqlite3
 from classes import Quote, Result, User
 
 
+ENTITY_TAGS = {
+    'bold': ('<b>', '</b>'),
+    'italic': ('<i>', '</i>'),
+    'code': ('<code>', '</code>'),
+    'pre': ('<pre>', '</pre>'),
+}
+
+
 class QuoteDatabase:
     # Status codes for quotes
     QUOTE_ADDED = 1
@@ -202,7 +210,7 @@ class QuoteDatabase:
         return Result(quote, user)
 
     def add_quote(self, chat_id, message_id, sent_at, sent_by, content,
-            quoted_by):
+            entities, quoted_by):
         """Inserts a quote."""
         self.connect()
 
@@ -214,6 +222,19 @@ class QuoteDatabase:
             pass
         else:
             return self.QUOTE_ALREADY_EXISTS
+
+        # Convert text formatting to HTML
+        entities = sorted(entities, key=lambda e: e['offset'], reverse=True)
+
+        for entity in entities:
+            if entity['type'] not in ENTITY_TAGS:
+                continue
+
+            s = entity['offset']
+            e = s + entity['length']
+            s_tag, e_tag = ENTITY_TAGS[entity['type']]
+
+            content = content[0:s] + s_tag + content[s:e] + e_tag + content[e:]
 
         insert = ("INSERT INTO quote (chat_id, message_id, sent_at, sent_by,"
             "content, quoted_by) VALUES (?, ?, ?, ?, ?, ?);")

@@ -171,8 +171,8 @@ class QuoteBot(telepot.Bot):
             self.database.add_or_update_user(User.from_telegram(quoted_by))
 
             result = self.database.add_quote(
-                chat_id, quote['message_id'], sent_at,
-                sent_by['id'], quote['text'], quoted_by['id'])
+                chat_id, quote['message_id'], sent_at, sent_by['id'],
+                quote['text'], quote.get('entities', list()), quoted_by['id'])
 
             if result == QuoteDatabase.QUOTE_ADDED:
                 response = "quote added"
