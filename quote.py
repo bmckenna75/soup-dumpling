@@ -184,7 +184,7 @@ class QuoteBot(telepot.Bot):
 
 
 def main():
-    with open('tokens/weow.txt', 'r') as f:
+    with open('tokens/soup.txt', 'r') as f:
         token = f.read().strip()
 
     bot = QuoteBot(token)
