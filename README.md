@@ -11,6 +11,7 @@ Soup Dumpling is a simple quote bot for the Telegram chat client. It's written i
 
 # Commands
 
+- `/about` Displays the current version, commit hash, and a link to this repository.
 - `/addquote` Reply to any message to quote it. You can't quote messages sent by yourself or a bot, or non-text messages.
 - `/random` Displays a random quote.
 - `/author <name>` Displays a random quote from a user whose name or username contains `name`.

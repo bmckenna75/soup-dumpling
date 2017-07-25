@@ -1,17 +1,34 @@
 import telepot
 import time
 from datetime import datetime
+from subprocess import check_output
 
 from classes import User
 from database import QuoteDatabase
 
+
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+REPOSITORY_NAME = "Doktor/soup-dumpling"
+REPOSITORY_URL = "https://github.com/Doktor/soup-dumpling"
+
+COMMIT_HASH = check_output(['git', 'rev-parse', 'HEAD'],
+    encoding='utf8').rstrip('\n')
+COMMIT_URL = REPOSITORY_URL + '/commit/' + COMMIT_HASH
+
+DATE_ARGS = ['git', 'log', COMMIT_HASH,
+    '-1', '--date=iso', r'--pretty=format:%cd']
+COMMIT_DATE = check_output(DATE_ARGS, encoding='utf8')[:19]
+
+# The relative date is used for the 'about' command
+DATE_ARGS[4] = '--date=relative'
 
 VERSION = (1, 0, 0)
 
 
 class QuoteBot(telepot.Bot):
-    commands = ['random', 'quotes', 'stats', 'author', 'search', 'addquote']
+    commands = ['about',
+        'random', 'quotes', 'stats', 'author', 'search', 'addquote']
 
     def __init__(self, token):
         super(QuoteBot, self).__init__(token)
@@ -56,7 +73,29 @@ class QuoteBot(telepot.Bot):
             return
 
         # Handle commands
-        if command == 'random':
+        if command == 'about':
+            info = {
+                'version': '.'.join((str(n) for n in VERSION)),
+                'updated': COMMIT_DATE,
+                'updated_rel': check_output(DATE_ARGS, encoding='utf8'),
+                'repo_url': REPOSITORY_URL,
+                'repo_name': REPOSITORY_NAME,
+                'hash_url': COMMIT_URL,
+                'hash': COMMIT_HASH[:7],
+            }
+
+            response = ['"Nice quote!" - <b>Soup Dumpling {version}</b>',
+                '<i>{updated} ({updated_rel})</i>',
+                '',
+                'Source code at <a href="{repo_url}">{repo_name}</a>',
+                'Running on commit <a href="{hash_url}">{hash}</a>',
+            ]
+
+            response = '\n'.join(response).format(**info)
+            self.sendMessage(chat_id, response,
+                disable_web_page_preview=True, parse_mode='HTML')
+
+        elif command == 'random':
             result = self.database.get_random_quote(chat_id)
 
             if result is None:
