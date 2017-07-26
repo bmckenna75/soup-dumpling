@@ -16,8 +16,26 @@ class User:
     @classmethod
     def from_telegram(cls, user):
         copy = user.copy()
-        copy['id_'] = copy['id']
-        del copy['id']
+        copy['id_'] = copy.pop('id')
+        return cls(**copy)
+
+
+class Chat:
+    def __init__(self, id_, type_, title='', username='', **kwargs):
+        self.id = id_
+        self.type = type_
+        self.title = title
+        self.username = username
+
+    @classmethod
+    def from_database(cls, chat):
+        return cls(*chat)
+
+    @classmethod
+    def from_telegram(cls, chat):
+        copy = chat.copy()
+        copy['id_'] = copy.pop('id')
+        copy['type_'] = copy.pop('type')
         return cls(**copy)
 
 
