@@ -24,7 +24,7 @@ COMMIT_DATE = check_output(DATE_ARGS, encoding='utf8')[:19]
 # The relative date is used for the 'about' command
 DATE_ARGS[4] = '--date=relative'
 
-VERSION = (1, 0, 0)
+VERSION = (1, 1, 0)
 
 # User state codes
 NO_CHAT_SPECIFIED = 0
