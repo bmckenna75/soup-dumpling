@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-from classes import Quote, Result, User
+from classes import Quote, Result, Chat, User
 
 
 ENTITY_TAGS = {
@@ -82,6 +82,111 @@ class QuoteDatabase:
                 (user.id, user.first_name, user.last_name, user.username))
 
         self.db.commit()
+
+    def get_chats(self, user_id):
+        """Returns a list of chats that a user is a member of."""
+        self.connect()
+
+        select = """SELECT chat.id, chat.title AS title FROM chat
+            INNER JOIN membership AS mem
+            ON mem.chat_id = chat.id
+            AND mem.user_id = ?
+            ORDER BY title COLLATE NOCASE"""
+        self.c.execute(select, (user_id,))
+
+        return self.c.fetchall()
+
+    def get_state(self, user_id):
+        """Returns the user's browsing state."""
+        self.connect()
+
+        select = "SELECT code, data FROM state WHERE user_id = ?"
+        self.c.execute(select, (user_id,))
+
+        return self.c.fetchone()
+
+    def get_or_create_state(self, user_id):
+        """Returns the user's browsing state, or creates it if it doesn't
+        exist."""
+        self.connect()
+
+        result = self.get_state(user_id)
+
+        if result is None:
+            insert = "INSERT INTO state (user_id, chat_id) VALUES (?, -1)"
+            self.c.execute(insert, (user_id,))
+            self.db.commit()
+
+            return self.get_state(user_id)
+
+        return result
+
+    def set_state(self, user_id, code, data=''):
+        """Sets the user's browsing state."""
+        self.connect()
+
+        if data:
+            update = "UPDATE state SET code = ?, data = ? WHERE user_id = ?"
+            self.c.execute(update, (code, data, user_id))
+        else:
+            update = "UPDATE state SET code = ? WHERE user_id = ?"
+            self.c.execute(update, (code, user_id))
+
+        self.db.commit()
+
+    # Chat methods
+
+    def get_chat_by_id(self, chat_id):
+        """Returns the chat with the given ID."""
+        self.connect()
+
+        select = "SELECT * FROM chat WHERE id = ?;"
+        self.c.execute(select, (chat_id,))
+
+        chat = self.c.fetchone()
+        if not chat:
+            return None
+        else:
+            return Chat.from_database(chat)
+
+    def chat_exists(self, chat):
+        """Determines if the given chat exists in the database."""
+        self.connect()
+
+        select = "SELECT EXISTS(SELECT * FROM chat WHERE id = ? LIMIT 1);"
+        self.c.execute(select, (chat.id,))
+
+        return self.c.fetchone()[0]
+
+    def add_or_update_chat(self, chat):
+        """Adds a chat to the database if it doesn't exist, or updates its data
+        if it does."""
+        self.connect()
+
+        if self.chat_exists(chat):
+            update = ("UPDATE chat SET "
+                "title = ?, username = ? WHERE id = ?;")
+            self.c.execute(update, (chat.title, chat.username, chat.id))
+        else:
+            insert = "INSERT INTO chat VALUES (?, ?, ?, ?);"
+            self.c.execute(insert,
+                (chat.id, chat.type, chat.title, chat.username))
+
+        self.db.commit()
+
+    # Membership methods
+
+    def add_membership(self, user_id, chat_id):
+        """Adds a membership listing, indicating that a user is in a chat."""
+        self.connect()
+
+        select = "INSERT INTO membership (user_id, chat_id) VALUES (?, ?)"
+        try:
+            self.c.execute(select, (user_id, chat_id))
+        except sqlite3.IntegrityError:
+            pass
+        else:
+            self.db.commit()
 
     # User ranking methods
 

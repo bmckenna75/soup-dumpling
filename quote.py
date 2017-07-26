@@ -1,9 +1,10 @@
+import json
 import telepot
 import time
 from datetime import datetime
 from subprocess import check_output
 
-from classes import User
+from classes import Chat, User
 from database import QuoteDatabase
 
 
@@ -24,6 +25,11 @@ COMMIT_DATE = check_output(DATE_ARGS, encoding='utf8')[:19]
 DATE_ARGS[4] = '--date=relative'
 
 VERSION = (1, 0, 0)
+
+# User state codes
+NO_CHAT_SPECIFIED = 0
+SELECTING_CHAT = 1
+SELECTED_CHAT = 2
 
 
 class QuoteBot(telepot.Bot):
@@ -50,6 +56,7 @@ class QuoteBot(telepot.Bot):
 
     def handle(self, m):
         content_type, chat_type, chat_id = telepot.glance(m)
+        origin = chat_id
 
         if content_type != 'text':
             return
@@ -61,7 +68,7 @@ class QuoteBot(telepot.Bot):
         user_id = m['from']['id']
         text = m['text'].lower()
 
-        if not text.startswith('/'):
+        if chat_type != 'private' and not text.startswith('/'):
             return
 
         raw_command = text.split(' ')[0]
@@ -69,10 +76,15 @@ class QuoteBot(telepot.Bot):
         command = raw_command.replace(self.username.lower(), '').lstrip('/')
 
         # Ignore unsupported commands
-        if command not in self.commands:
+        if chat_type != 'private' and command not in self.commands:
             return
 
-        # Handle commands
+        self.database.add_or_update_user(User.from_telegram(m['from']))
+
+        if user_id != chat_id:
+            self.database.add_or_update_chat(Chat.from_telegram(m['chat']))
+            self.database.add_membership(user_id, chat_id)
+
         if command == 'about':
             info = {
                 'version': '.'.join((str(n) for n in VERSION)),
@@ -92,18 +104,130 @@ class QuoteBot(telepot.Bot):
             ]
 
             response = '\n'.join(response).format(**info)
-            self.sendMessage(chat_id, response,
+            return self.sendMessage(chat_id, response,
                 disable_web_page_preview=True, parse_mode='HTML')
 
-        elif command == 'random':
+        elif chat_type != 'private' and command == 'addquote':
+            quote = m.get('reply_to_message', '')
+            if not quote:
+                return
+
+            # Only text messages can be added as quotes
+            content_type, _, _ = telepot.glance(quote)
+            if content_type != 'text':
+                return
+
+            quoted_by = m['from']
+
+            # Forwarded messages
+            if 'forward_from' in quote:
+                sent_by = quote['forward_from']
+                sent_at = quote['forward_date']
+            else:
+                sent_by = quote['from']
+                sent_at = quote['date']
+
+            # Bot messages can't be added as quotes
+            if sent_by['id'] == self.user['id']:
+                response = "can't quote bot messages"
+                return self.sendMessage(
+                    origin, response, reply_to_message_id=message_id)
+
+            # Users can't add their own messages as quotes
+            if sent_by['id'] == quoted_by['id']:
+                response = "can't quote own messages"
+                return self.sendMessage(
+                    origin, response, reply_to_message_id=message_id)
+
+            self.database.add_or_update_user(User.from_telegram(sent_by))
+            self.database.add_or_update_user(User.from_telegram(quoted_by))
+
+            result = self.database.add_quote(
+                chat_id, quote['message_id'], sent_at, sent_by['id'],
+                quote['text'], quote.get('entities', list()), quoted_by['id'])
+
+            if result == QuoteDatabase.QUOTE_ADDED:
+                response = "quote added"
+            elif result == QuoteDatabase.QUOTE_ALREADY_EXISTS:
+                response = "quote already exists"
+
+            return self.sendMessage(
+                chat_id, response, reply_to_message_id=message_id)
+
+        # Browse quotes via direct message
+
+        if chat_type == 'private':
+            code, data = self.database.get_or_create_state(user_id)
+            data = '' if data is None or not data else json.loads(data)
+
+            if command in ['start', 'chats'] or code == NO_CHAT_SPECIFIED:
+                chats = self.database.get_chats(user_id)
+
+                if not chats:
+                    response = "<b>Chat selection</b>\nno chats found"
+                    return self.sendMessage(
+                        origin, response, parse_mode='HTML')
+
+                response = [
+                    "<b>Chat selection</b>",
+                    "Choose a chat by its number or title:",
+                    "",
+                ]
+
+                mapping = []
+                for i, (chat_id, chat_title) in enumerate(chats):
+                    response.append("<b>[{0}]</b> {1}".format(i, chat_title))
+                    mapping.append([i, chat_id, chat_title])
+
+                self.database.set_state(
+                    user_id, SELECTING_CHAT, data=json.dumps(mapping))
+
+                response = '\n'.join(response)
+                return self.sendMessage(origin, response, parse_mode='HTML')
+
+            elif code == SELECTING_CHAT:
+                choice = text
+
+                try:
+                    i = int(choice)
+                    _, selected_id, title = data[i]
+                except IndexError:
+                    return self.sendMessage(chat_id, "invalid chat number")
+                except ValueError:
+                    try:
+                        _, selected_id, title = next(filter(data,
+                            lambda chat: choice.lower() in chat[2].lower()))
+                    except StopIteration:
+                        return self.sendMessage(
+                            chat_id, "no chat titles matched")
+
+                self.database.set_state(
+                    user_id, SELECTED_CHAT, data=str(selected_id))
+
+                response = 'selected chat "{0}"'.format(title)
+                self.sendMessage(origin, response, parse_mode='HTML')
+
+                chat_id = selected_id
+
+            elif code == SELECTED_CHAT:
+                chat_id = int(self.database.get_state(user_id)[1])
+
+                if command == 'which':
+                    chat = self.database.get_chat_by_id(chat_id)
+                    response = 'searching quotes from "{0}"'.format(chat.title)
+                    return self.sendMessage(origin, response)
+
+        # Find quotes
+
+        if command == 'random':
             result = self.database.get_random_quote(chat_id)
 
             if result is None:
                 response = "no quotes in database"
-                self.sendMessage(chat_id, response)
+                self.sendMessage(origin, response)
             else:
                 response = self._format_quote(*result)
-                self._send_quote(chat_id, response, result.quote.id)
+                self._send_quote(origin, response, result.quote.id)
 
         elif command == 'quotes':
             if not args:
@@ -114,7 +238,7 @@ class QuoteBot(telepot.Bot):
                 response = ('{0} quotes in this chat '
                     'for search term "{1}"').format(count, args)
 
-            self.sendMessage(chat_id, response, reply_to_message_id=message_id)
+            self.sendMessage(origin, response, reply_to_message_id=message_id)
 
         elif command == 'stats':
             # Overall
@@ -144,7 +268,7 @@ class QuoteBot(telepot.Bot):
                 response.append("• {0} ({1:.1%}): {2}".format(
                     count, count / total_count, name))
 
-            self.sendMessage(chat_id, '\n'.join(response), parse_mode='HTML')
+            self.sendMessage(origin, '\n'.join(response), parse_mode='HTML')
 
         elif command == 'author':
             if not args:
@@ -154,10 +278,10 @@ class QuoteBot(telepot.Bot):
 
             if result is None:
                 response = 'no quotes found by author "{}"'.format(args)
-                self.sendMessage(chat_id, response)
+                self.sendMessage(origin, response)
             else:
                 response = self._format_quote(*result)
-                self._send_quote(chat_id, response, result.quote.id)
+                self._send_quote(origin, response, result.quote.id)
 
         elif command == 'search':
             if not args:
@@ -167,59 +291,10 @@ class QuoteBot(telepot.Bot):
 
             if result is None:
                 response = 'no quotes found for search terms "{}"'.format(args)
-                self.sendMessage(chat_id, response)
+                self.sendMessage(origin, response)
             else:
                 response = self._format_quote(*result)
-                self._send_quote(chat_id, response, result.quote.id)
-
-        elif command == 'addquote':
-            quote = m.get('reply_to_message', '')
-            if not quote:
-                return
-
-            # Only text messages can be added as quotes
-            content_type, _, _ = telepot.glance(quote)
-            if content_type != 'text':
-                return
-
-            quoted_by = m['from']
-
-            # Forwarded messages
-            if 'forward_from' in quote:
-                sent_by = quote['forward_from']
-                sent_at = quote['forward_date']
-            else:
-                sent_by = quote['from']
-                sent_at = quote['date']
-
-            # Bot messages can't be added as quotes
-            if sent_by['id'] == self.user['id']:
-                response = "can't quote bot messages"
-                self.sendMessage(
-                    chat_id, response, reply_to_message_id=message_id)
-                return
-
-            # Users can't add their own messages as quotes
-            if sent_by['id'] == quoted_by['id']:
-                response = "can't quote own messages"
-                self.sendMessage(
-                    chat_id, response, reply_to_message_id=message_id)
-                return
-
-            self.database.add_or_update_user(User.from_telegram(sent_by))
-            self.database.add_or_update_user(User.from_telegram(quoted_by))
-
-            result = self.database.add_quote(
-                chat_id, quote['message_id'], sent_at, sent_by['id'],
-                quote['text'], quote.get('entities', list()), quoted_by['id'])
-
-            if result == QuoteDatabase.QUOTE_ADDED:
-                response = "quote added"
-            elif result == QuoteDatabase.QUOTE_ALREADY_EXISTS:
-                response = "quote already exists"
-
-            self.sendMessage(
-                chat_id, response, reply_to_message_id=message_id)
+                self._send_quote(origin, response, result.quote.id)
 
 
 def main():
